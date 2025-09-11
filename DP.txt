@@ -2,3 +2,283 @@ DP scripts:
 
 
 // Radar
+
+public float volume = 1f;
+public Transform pointPool;
+public int pointCount;
+
+private List<Transform> targets = new List<Transform>();
+
+private void Awake()
+{
+	for (int i = 0; i < pointCount; i++) {
+		Instantiate(pointPool.GetChild(0).gameObject, pointPool);
+	}
+}
+
+private void OnEnable()
+{
+	StartCoroutine(Check());
+}
+
+private void OnDisable()
+{
+	StopAllCoroutines();
+}
+
+private IEnumerator Check()
+{
+	Transform root = transform.root;
+	Collider sphere = GetComponent<SphereCollider>();
+	while (true) {
+		// Display
+		int i = 0;
+		foreach(Transform t in targets){
+			if (pointPool.childCount >= i)
+				break;
+			Transform p = pointPool.GetChild(i);
+			p.localPosition = root.TransformDirection(root.position-t.position)/sphere.radius*volume;
+			p.gameObject.SetActive(true);
+			i++;
+		}
+		for (i; i < pointPool.childCount; i++) {
+			if (!pointPool[i].gameObject.activeSelf)
+				break;
+			pointPool[i].gameObject.SetActive(false);
+		}
+		yield return new WaitForSeconds(2f);
+	}
+}
+
+private void OnTriggerEnter(Collider col) {
+	if (col.gameObject.tag != "Root")
+		return;
+	if (targets.Contains(col.transform))
+		return;
+	targets.Add(t);
+}
+
+private void OnTriggerExit(Collider col) {
+	if (col.gameObject.tag != "Root")
+		return;
+	if (!targets.Contains(col.transform))
+		return;
+	targets.Remove(t);
+}
+
+
+
+// Ship Tank
+
+public int size = 5000;
+
+public Dictionary<string, int> resources = new Dictionary<string, int>();
+
+public static Dictionary<uint, Tank> all = new Dictionary<uint, Tank>();
+private uint id;
+
+private void OnEnable()
+{
+	uint id = transform.root.gameObject.GetComponent<NetworkIdentity>().netId;
+	if (!all.ContainsKey(id))
+		all.Add(id, this);
+	if (NetworkServer.active)
+		StartCoroutine(Check());
+}
+
+private IEnumerator Check()
+{
+	while (true) {
+		yield return new WaitForSeconds(Random.Range(2f, 5f));
+		NetworkBridge.UpdateTank(/*Turn resources into string*/);
+	}
+}
+
+private void OnDisable()
+{
+	if (all.ContainsKey(id))
+		all.Remove(id);
+	StopAllCoroutines();
+}
+
+public void AddResource(string s, int i)
+{
+	int used = GetSize();
+	if (used >= size)
+		return;
+	if (used+i > size)
+		i = size-used;
+	
+	if (resources.ContainsKey(s)) {
+		resources[s] += i;
+	} else {
+		resources.Add(s, i);
+	}
+}
+
+public void RemoveResource(string s, int i)
+{
+	if (resources.ContainsKey(s)) {
+		resources[s] -= i;
+		if (resources[s] <= 0) {
+			resources.Remove(s);
+		}
+	}
+}
+
+public string GetResources()
+{
+	string s = "";
+	foreach(KeyValuePair<string,int> res in resources) {
+		s += res.Key+" : "+res.Value;
+	}
+	return s;
+}
+
+public int GetSize() {
+	int i = 0;
+	foreach(KeyValuePair<string,int> res in resources) {
+		i += res.Value;
+	}
+	return i;
+}
+
+// Resource
+
+[System.Serializable]
+public struct ResourceType{
+	public string res;
+	[Range(0, 100)]
+	public int prob;
+	public float qty;
+}
+
+public struct ResourceSample{
+	public string res;
+	public int qty;
+	
+	public ResourceSample(string r, int q) {
+		this.res = r;
+		this.qty = q;
+	}
+}
+
+public ResourceType[] resources;
+
+public ResourceSample Sample(int power) {
+	foreach(ResourceType rt in resources) {
+		if (Random.Range(0, 100) < rt.prob)
+			return new ResourceSample(rt.res, Random.Range(power*rt.qty*.5f, power*rt.qty));
+	}
+	return new ResourceSample(resources[0].res, Random.Range(power*resources[0].qty*.5f, power*resources[0].qty));
+}
+
+
+
+// Ship extractor
+
+public Transform muzzle;
+public float range = 100f;
+public int power = 5;
+public Vector2 duration = new Vector2(2f, 5f);
+
+public Tank tank;
+
+private bool extracting = true;
+
+public IEnumerator Extracting()
+{
+	while (extracting) {
+		yield return new WaitForSeconds(Random.Range(duration.x, duration.y));
+		RaycastHit hit;
+		if (Physics.Raycast(muzzle.position, muzzle.rotation, out hit, range)) {
+			Resource res = hit.transform.gameObject.GetComponent<Resource>();
+			if (res != null) {
+				Resource.ResourceSample sample = res.Sample(power);
+				NetworkBridge.AddToTank(transform.root.gameObject.GetComponent<NetworkIdentity>().netId, sample.res, sample.qty);
+			}
+		}
+	}
+}
+
+// Action
+
+public static Dictionary<string, Action> all = new Dictionary<string, Action>();
+public string id = "action";
+private string fullId;
+
+private void OnEnable()
+{
+	fullId = transform.root.gameObject.GetComponent<NetworkIdentity>().netId+"_"+id;
+	if (!all.ContainsKey(fullId))
+		all.Add(fullId, this);
+}
+
+private void OnDisable()
+{
+	if (all.ContainsKey(fullId))
+		all.Remove(fullId);
+}
+
+public void Action(int i) {
+	ActionCustom(i);
+	NetworkBridge.Action(Player.GetPlayer().GetComponent<NetworkIdentity>().netId, fullId, i);
+}
+
+public void ActionNetwork(int i) {
+	ActionCustom(i);
+}
+
+protected virtual void ActionCustom(int i) {
+	// ...
+}
+
+// Network Bridge
+
+
+
+public static void Action(uint playerId, string id, int i) {
+	instance.cmdAction(playerId, id, i);
+}
+
+[Command]
+public void cmdAction(uint playerId, string id, int i) {
+	rpcAction(playerId, id, i);
+}
+
+[ClientRpc]
+public void rpcAction(uint playerId, string id, int i) {
+	if (Player.GetPlayer().GetComponent<NetworkIdentity>().netId == playerId)
+		return;
+	if (!Action.all.ContainsKey(id))
+		return;
+	ActionNetwork.all[id].Action(i);
+}
+
+public static void AddToTank(uint id, string res, int qty) {
+	instance.cmdAddToTank(id, res, qty);
+}
+
+[Command]
+public void cmdAddToTank(uint id, string res, int qty) {
+	if (!Tank.all.ContainsKey(id))
+		return;
+	Tank.all[id].AddResource(res, qty);
+}
+
+// res : <res>:<qty>*
+public static void UpdateTank(uint id, string res) {
+	instance.cmdUpdateTank(id, res);
+}
+
+[Command]
+public void cmdUpdateTank(uint id, string res) {
+	rpcUpdateTank(id, res);
+}
+
+[ClientRpc]
+public void rpcUpdateTank(uint id, string res) {
+	if (!Tank.all.ContainsKey(id))
+		return;
+	Tank.all[id].resources = // Unwrap res string into dictionnary
+}
