@@ -1,5 +1,35 @@
+<!DOCTYPE html>
+<html>
 <body>
-<div>
-<p>TEST HTML</p>
-</div>
+	<textarea id="content" placeholder="place file content here"></textarea>
 </body>
+<script>
+const decipher = salt => {
+    const textToChars = text => text.split('').map(c => c.charCodeAt(0));
+    const applySaltToChar = code => textToChars(salt).reduce((a,b) => a ^ b, code);
+    return encoded => encoded.match(/.{1,2}/g)
+      .map(hex => parseInt(hex, 16))
+      .map(applySaltToChar)
+      .map(charCode => String.fromCharCode(charCode))
+      .join('');
+}
+
+const decrypter = decipher('test');
+
+document.getElementById("file")
+    .addEventListener("keyup", function(event) {
+    event.preventDefault();
+    if (event.keyCode === 13) {
+        Decrypt();
+    }
+});
+
+function Decrypt() {
+	const content = document.getElementById("content");
+	content.value = decrypter(content.value);
+	content.style.height = content.scrollHeight+"px";
+
+}
+
+</script>
+</html>
