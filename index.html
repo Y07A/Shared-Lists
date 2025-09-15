@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <body>
-	<textarea id="content" placeholder="place file content here"></textarea>
+	<textarea id="content" onblur="Decrypt()" placeholder="place file content here"></textarea>
 </body>
 <script>
 const decipher = salt => {
@@ -14,15 +14,7 @@ const decipher = salt => {
       .join('');
 }
 
-const decrypter = decipher('goofygoozyboozydoozykooky');
-
-document.getElementById("file")
-    .addEventListener("keyup", function(event) {
-    event.preventDefault();
-    if (event.keyCode === 13) {
-        Decrypt();
-    }
-});
+const decrypter = decipher('test');
 
 function Decrypt() {
 	const content = document.getElementById("content");
