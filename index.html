@@ -16,6 +16,14 @@ const decipher = salt => {
 
 const decrypter = decipher('test');
 
+document.getElementById("content")
+    .addEventListener("keyup", function(event) {
+    event.preventDefault();
+    if (event.keyCode === 13) {
+        Decrypt();
+    }
+});
+
 function Decrypt() {
 	const content = document.getElementById("content");
 	content.value = decrypter(content.value);
